@@ -30,7 +30,7 @@ cmake --build build -j$(nproc)
 ## Usage
 
 ```
-./build/precoloring <matrix.mtx> [options]
+./build/precol <matrix.mtx> [options]
 
 Options:
   --side    rows|columns     Which side to color (default: columns)
@@ -53,13 +53,13 @@ Options:
 
 ```bash
 # Color columns of a symmetric matrix, verify the result
-./build/precoloring FloridaSparseMatrixCollection/bcsstk01.mtx --verify
+./build/precol FloridaSparseMatrixCollection/bcsstk01.mtx --verify
 
 # Color rows using largest-degree-first ordering
-./build/precoloring FloridaSparseMatrixCollection/ash608.mtx --side rows --order largest --verify
+./build/precol FloridaSparseMatrixCollection/ash608.mtx --side rows --order largest --verify
 
 # Reproducible random ordering
-./build/precoloring FloridaSparseMatrixCollection/mac_econ_fwd500.mtx --order random --seed 123 --verify
+./build/precol FloridaSparseMatrixCollection/mac_econ_fwd500.mtx --order random --seed 123 --verify
 ```
 
 Sample output:

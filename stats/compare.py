@@ -63,9 +63,21 @@ def run(cmd, timeout, cwd=None):
 # ── parsers ───────────────────────────────────────────────────────────────────
 
 def parse_precol(stdout):
-    """Return (num_colors, time_ms) from PreCol output."""
-    m_colors = re.search(r"Colors used:\s*(\d+)", stdout)
-    m_time   = re.search(r"Coloring:\s*([\d.]+)\s*ms", stdout)
+    """Return (num_colors, time_ms) from PreCol regular-coloring output."""
+    m_colors = re.search(r"Regular:\s+Colors used:\s*(\d+)", stdout)
+    if not m_colors:                          # backward-compat without --required-blocks
+        m_colors = re.search(r"Colors used:\s*(\d+)", stdout)
+    m_time = re.search(r"Regular:\s+Colors used:.*?Coloring:\s*([\d.]+)\s*ms", stdout)
+    if not m_time:
+        m_time = re.search(r"Coloring:\s*([\d.]+)\s*ms", stdout)
+    colors = int(m_colors.group(1)) if m_colors else None
+    t_ms   = float(m_time.group(1)) if m_time else None
+    return colors, t_ms
+
+def parse_precol_restricted(stdout):
+    """Return (num_colors, time_ms) from PreCol restricted-coloring output."""
+    m_colors = re.search(r"Restricted:\s+Colors used:\s*(\d+)", stdout)
+    m_time   = re.search(r"Restricted:\s+Colors used:.*?Coloring:\s*([\d.]+)\s*ms", stdout)
     colors = int(m_colors.group(1)) if m_colors else None
     t_ms   = float(m_time.group(1)) if m_time else None
     return colors, t_ms
@@ -98,16 +110,18 @@ def parse_dsjm_stats(stdout):
 
 # ── per-tool runners ──────────────────────────────────────────────────────────
 
-def run_precol(mtx, side, ordering_flag, timeout):
+def run_precol(mtx, side, ordering_flag, timeout, block_size=0):
     if not PRECOL.exists():
-        return None, None, "binary not found"
+        return None, None, None, None, "binary not found"
     cli_side = "columns" if side == "column" else "rows"
-    stdout, stderr, wall, rc = run(
-        [str(PRECOL), str(mtx), "--side", cli_side, "--order", ordering_flag],
-        timeout
-    )
-    colors, t = parse_precol(stdout)
-    return colors, t, None if colors is not None else (stderr or stdout)[:120]
+    cmd = [str(PRECOL), str(mtx), "--side", cli_side, "--order", ordering_flag]
+    if block_size > 0:
+        cmd += ["--required-blocks", str(block_size)]
+    stdout, stderr, wall, rc = run(cmd, timeout)
+    reg_colors, reg_t = parse_precol(stdout)
+    res_colors, res_t = parse_precol_restricted(stdout) if block_size > 0 else (None, None)
+    ok = reg_colors is not None
+    return reg_colors, reg_t, res_colors, res_t, None if ok else (stderr or stdout)[:120]
 
 def run_colpack(mtx, side, colpack_order, timeout):
     if not COLPACK.exists():
@@ -214,6 +228,8 @@ def main():
     print(f"[Julia] collected {len(julia_rows)} rows", flush=True)
 
     # ── PreCol + ColPack + DSJM: per matrix ───────────────────────────────────
+    BLOCK_SIZES = [4, 16, 64]
+
     for i, mtx in enumerate(mtx_files):
         bname = mtx.name
         m_rows, m_cols, m_nnz = get_matrix_info(mtx)
@@ -223,16 +239,29 @@ def main():
         for side in SIDES:
             for ord_name, precol_ord, colpack_ord, _ in ORDERINGS:
 
-                # PreCol
-                colors, t, err = run_precol(mtx, side, precol_ord, args.timeout)
+                # PreCol regular + restricted (one call per block size)
+                reg_colors, reg_t, _, _, err = run_precol(
+                    mtx, side, precol_ord, args.timeout, block_size=0)
                 all_rows.append({
-                    "matrix":     bname, "rows": m_rows, "cols": m_cols, "nnz": m_nnz,
+                    "matrix": bname, "rows": m_rows, "cols": m_cols, "nnz": m_nnz,
                     "tool":       "PreCol",
                     "side":       side,
                     "ordering":   ord_name,
-                    "num_colors": colors if colors is not None else "ERROR",
-                    "time_ms":    f"{t:.3f}" if t is not None else "ERROR",
+                    "num_colors": reg_colors if reg_colors is not None else "ERROR",
+                    "time_ms":    f"{reg_t:.3f}" if reg_t is not None else "ERROR",
                 })
+
+                for bs in BLOCK_SIZES:
+                    _, _, res_colors, res_t, err2 = run_precol(
+                        mtx, side, precol_ord, args.timeout, block_size=bs)
+                    all_rows.append({
+                        "matrix": bname, "rows": m_rows, "cols": m_cols, "nnz": m_nnz,
+                        "tool":       f"PreCol-restricted-{bs}",
+                        "side":       side,
+                        "ordering":   ord_name,
+                        "num_colors": res_colors if res_colors is not None else "ERROR",
+                        "time_ms":    f"{res_t:.3f}" if res_t is not None else "ERROR",
+                    })
 
                 # ColPack
                 cp_results, cp_err = run_colpack(mtx, side, colpack_ord, args.timeout)

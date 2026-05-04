@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "bipartite_graph.hpp"
+#include "required_edges.hpp"
 
 // Which partition of the bipartite graph to color.
 enum class ColoringSide { ROWS, COLUMNS };
@@ -44,6 +45,29 @@ ColoringResult greedy_color(const BipartiteGraph& g,
 
 // Returns true iff no two distance-2 neighbours share the same color.
 bool verify_coloring(const BipartiteGraph& g, const ColoringResult& result);
+
+// ── restricted coloring ───────────────────────────────────────────────────────
+//
+// Two vertices on the same side conflict only when they share a common
+// neighbour w on the other side AND at least one of the two edges incident
+// on w is in `required`.  This is a relaxation of full distance-2 coloring
+// and always produces ≤ colors than the unrestricted version.
+
+ColoringResult greedy_color_restricted(const BipartiteGraph& g,
+                                       ColoringSide side,
+                                       std::span<const int> order,
+                                       const RequiredEdges& required);
+
+ColoringResult greedy_color_restricted(const BipartiteGraph& g,
+                                       ColoringSide side,
+                                       OrderingStrategy strategy,
+                                       const RequiredEdges& required,
+                                       unsigned seed = 42);
+
+// Returns true iff the coloring satisfies the restricted conflict rule.
+bool verify_restricted_coloring(const BipartiteGraph& g,
+                                const ColoringResult& result,
+                                const RequiredEdges& required);
 
 std::string to_string(ColoringSide side);
 std::string to_string(OrderingStrategy strategy);

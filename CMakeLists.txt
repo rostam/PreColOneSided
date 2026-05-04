@@ -13,6 +13,7 @@ add_library(precol_lib
     src/mtx_reader.cpp
     src/bipartite_graph.cpp
     src/coloring.cpp
+    src/required_edges.cpp
 )
 target_include_directories(precol_lib PUBLIC src)
 
@@ -33,6 +34,7 @@ add_executable(tests
     tests/test_mtx_reader.cpp
     tests/test_bipartite_graph.cpp
     tests/test_coloring.cpp
+    tests/test_restricted_coloring.cpp
 )
 target_link_libraries(tests PRIVATE precol_lib Catch2::Catch2WithMain)
 

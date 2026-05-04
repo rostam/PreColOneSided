@@ -306,6 +306,93 @@ def plot_ordering_effect(rows, out_path):
     plt.close(fig)
     print(f"  saved {out_path.name}")
 
+# ── plot 07: restricted vs regular ───────────────────────────────────────────
+
+def plot_restricted_comparison(rows, out_path):
+    """
+    Two sub-plots for large matrices, natural column ordering:
+      Left:  color counts  — PreCol (regular) + restricted at block sizes 4, 16, 64
+      Right: % color reduction = (regular - restricted) / regular * 100
+    """
+    BLOCK_SIZES   = [4, 16, 64]
+    BLOCK_COLORS  = {"4": "#64B5F6", "16": "#1565C0", "64": "#0D47A1"}
+    REG_COLOR     = TOOL_COLORS["PreCol"]
+
+    lmats = large_matrices(rows)
+
+    # Build lookup: {matrix: {tool: (nc, t)}}
+    d = defaultdict(dict)
+    for r in rows:
+        if r["side"] != "column" or r["ordering"] not in ("natural",):
+            continue
+        if r["nc"] is None:
+            continue
+        d[r["matrix"]][r["tool"]] = r["nc"]
+
+    mats = [m for m in lmats if "PreCol" in d.get(m, {})]
+    if not mats:
+        print("  no data for restricted comparison plot — skipping")
+        return
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(max(10, len(mats) * 0.75), 9),
+                                   sharex=True)
+
+    x  = np.arange(len(mats))
+    n_series = 1 + len(BLOCK_SIZES)
+    w  = 0.75 / n_series
+
+    # ── top: absolute color counts ────────────────────────────────────────────
+    reg_vals = [d.get(m, {}).get("PreCol", float("nan")) for m in mats]
+    ax1.bar(x - (n_series / 2 - 0.5) * w, reg_vals, w,
+            label="PreCol (regular)", color=REG_COLOR, alpha=0.9,
+            edgecolor="white", linewidth=0.5)
+
+    for j, bs in enumerate(BLOCK_SIZES):
+        tool = f"PreCol-restricted-{bs}"
+        vals = [d.get(m, {}).get(tool, float("nan")) for m in mats]
+        ax1.bar(x + (j - n_series / 2 + 1.5) * w, vals, w,
+                label=f"Restricted block={bs}", color=BLOCK_COLORS[str(bs)],
+                alpha=0.88, edgecolor="white", linewidth=0.5)
+
+    ax1.set_ylabel("Number of colors", fontsize=10)
+    ax1.set_title(f"Regular vs restricted coloring — large matrices  (nnz ≥ {NNZ_THRESHOLD:,})\n"
+                  "Column coloring, natural ordering",
+                  fontsize=11, fontweight="bold", pad=8)
+    ax1.legend(fontsize=8, ncol=2, loc="upper right")
+    ax1.grid(axis="y", linestyle="--", alpha=0.35)
+
+    # ── bottom: % reduction ───────────────────────────────────────────────────
+    for j, bs in enumerate(BLOCK_SIZES):
+        tool = f"PreCol-restricted-{bs}"
+        reductions = []
+        for m in mats:
+            reg = d.get(m, {}).get("PreCol")
+            res = d.get(m, {}).get(tool)
+            if reg and res:
+                reductions.append(100.0 * (reg - res) / reg)
+            else:
+                reductions.append(float("nan"))
+        ax2.bar(x + (j - len(BLOCK_SIZES) / 2 + 0.5) * (0.7 / len(BLOCK_SIZES)),
+                reductions, 0.7 / len(BLOCK_SIZES),
+                label=f"block={bs}", color=BLOCK_COLORS[str(bs)],
+                alpha=0.88, edgecolor="white", linewidth=0.5)
+
+    ax2.axhline(0, color="black", linewidth=0.8)
+    ax2.set_ylabel("Color reduction (%)", fontsize=10)
+    ax2.set_title("Color count reduction: (regular − restricted) / regular × 100",
+                  fontsize=10, fontweight="bold")
+    ax2.legend(fontsize=9, loc="upper right")
+    ax2.grid(axis="y", linestyle="--", alpha=0.35)
+
+    ax2.set_xticks(x)
+    ax2.set_xticklabels([short(m) for m in mats],
+                        rotation=40, ha="right", fontsize=8)
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"  saved {out_path.name}")
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -337,6 +424,7 @@ def main():
     plot_nnz_vs_time(rows,                  out_dir / "04_nnz_vs_time.png")
     plot_color_ratio_heatmap(rows,          out_dir / "05_color_ratio_heatmap.png")
     plot_ordering_effect(rows,              out_dir / "06_ordering_effect.png")
+    plot_restricted_comparison(rows,        out_dir / "07_restricted_comparison.png")
 
     print("\nDone.")
 

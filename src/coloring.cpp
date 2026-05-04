@@ -138,6 +138,108 @@ bool verify_coloring(const BipartiteGraph& g, const ColoringResult& res) {
     return true;
 }
 
+// ── restricted coloring ───────────────────────────────────────────────────────
+
+ColoringResult greedy_color_restricted(const BipartiteGraph& g,
+                                       ColoringSide side,
+                                       std::span<const int> order,
+                                       const RequiredEdges& required) {
+    const int n  = (side == ColoringSide::COLUMNS) ? g.num_cols() : g.num_rows();
+    const int sz = static_cast<int>(order.size());
+    if (sz != n)
+        throw std::invalid_argument("order length does not match vertex count");
+
+    ColoringResult result;
+    result.side = side;
+    result.colors.assign(n, -1);
+
+    std::vector<int> forbidden(n + 1, -1);
+
+    // Helper: edge key for required lookup, normalised to (row, col).
+    auto is_req = [&](int w, int u) -> bool {
+        return (side == ColoringSide::COLUMNS) ? required.contains(w, u)
+                                               : required.contains(u, w);
+    };
+
+    for (const int v : order) {
+        auto opposite = (side == ColoringSide::COLUMNS)
+            ? g.col_neighbors(v)
+            : g.row_neighbors(v);
+
+        for (const int w : opposite) {
+            const bool w_v_req = is_req(w, v);
+
+            auto same_side = (side == ColoringSide::COLUMNS)
+                ? g.row_neighbors(w)
+                : g.col_neighbors(w);
+
+            for (const int u : same_side) {
+                if (u == v || result.colors[u] == -1) continue;
+                // Conflict only when at least one incident edge is required.
+                if (w_v_req || is_req(w, u)) {
+                    const int col = result.colors[u];
+                    if (col < static_cast<int>(forbidden.size()))
+                        forbidden[col] = v;
+                }
+            }
+        }
+
+        int color = 0;
+        while (color < static_cast<int>(forbidden.size()) && forbidden[color] == v)
+            ++color;
+
+        result.colors[v] = color;
+        result.num_colors = std::max(result.num_colors, color + 1);
+    }
+
+    return result;
+}
+
+ColoringResult greedy_color_restricted(const BipartiteGraph& g,
+                                       ColoringSide side,
+                                       OrderingStrategy strategy,
+                                       const RequiredEdges& required,
+                                       unsigned seed) {
+    auto order = generate_ordering(g, side, strategy, seed);
+    return greedy_color_restricted(g, side, order, required);
+}
+
+bool verify_restricted_coloring(const BipartiteGraph& g,
+                                const ColoringResult& res,
+                                const RequiredEdges& required) {
+    const int n = (res.side == ColoringSide::COLUMNS) ? g.num_cols() : g.num_rows();
+    if (static_cast<int>(res.colors.size()) != n) return false;
+
+    auto is_req = [&](int w, int u) -> bool {
+        return (res.side == ColoringSide::COLUMNS) ? required.contains(w, u)
+                                                   : required.contains(u, w);
+    };
+
+    for (int v = 0; v < n; ++v) {
+        if (res.colors[v] < 0) return false;
+
+        auto opposite = (res.side == ColoringSide::COLUMNS)
+            ? g.col_neighbors(v)
+            : g.row_neighbors(v);
+
+        for (const int w : opposite) {
+            const bool w_v_req = is_req(w, v);
+
+            auto same_side = (res.side == ColoringSide::COLUMNS)
+                ? g.row_neighbors(w)
+                : g.col_neighbors(w);
+
+            for (const int u : same_side) {
+                if (u != v && res.colors[u] == res.colors[v]) {
+                    if (w_v_req || is_req(w, u))
+                        return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
 // ── string helpers ────────────────────────────────────────────────────────────
 
 std::string to_string(ColoringSide side) {
